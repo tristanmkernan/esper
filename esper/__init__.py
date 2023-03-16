@@ -2,6 +2,7 @@ import time as _time
 
 from types import MethodType as _MethodType
 
+from typing import TypeVarTuple
 from typing import Iterable as _Iterable
 from typing import List as _List
 from typing import Optional as _Optional
@@ -13,7 +14,7 @@ from weakref import ref as _ref
 from weakref import WeakMethod as _WeakMethod
 
 
-version = '2.4'
+version = "2.4"
 
 
 ###################
@@ -40,6 +41,7 @@ def dispatch_event(name: str, *args) -> None:
 
 def _make_callback(name: str):
     """Create an internal callback to remove dead handlers."""
+
     def callback(weak_method):
         event_registry[name].remove(weak_method)
         if not event_registry[name]:
@@ -85,7 +87,11 @@ def remove_handler(name: str, func) -> None:
 ###################
 
 
-_C = _TypeVar('_C')
+_C = _TypeVar("_C")
+
+# from https://github.com/benmoran56/esper/issues/60
+# improved in Python 3.11 with TypeVarTuple
+_Cs = TypeVarTuple("_Cs")
 
 
 class Processor:
@@ -211,7 +217,6 @@ class World:
         entity = self._next_entity_id
 
         for component_instance in components:
-
             component_type = type(component_instance)
 
             if component_type not in self._components:
@@ -292,7 +297,12 @@ class World:
         """Check if an Entity has all the specified Component types."""
         return all(comp_type in self._entities[entity] for comp_type in component_types)
 
-    def add_component(self, entity: int, component_instance: _C, type_alias: _Optional[_Type[_C]] = None) -> None:
+    def add_component(
+        self,
+        entity: int,
+        component_instance: _C,
+        type_alias: _Optional[_Type[_C]] = None,
+    ) -> None:
         """Add a new Component instance to an Entity.
 
         Add a Component instance to an Entiy. If a Component of the same type
@@ -344,13 +354,15 @@ class World:
         for entity in self._components.get(component_type, []):
             yield entity, entity_db[entity][component_type]
 
-    def _get_components(self, *component_types: _Type[_C]) -> _Iterable[_Tuple[int, _List[_C]]]:
+    def _get_components(
+        self, *component_types: *_Cs
+    ) -> _Iterable[_Tuple[int, _Tuple[*_Cs]]]:
         entity_db = self._entities
         comp_db = self._components
 
         try:
             for entity in set.intersection(*[comp_db[ct] for ct in component_types]):
-                yield entity, [entity_db[entity][ct] for ct in component_types]
+                yield entity, tuple(entity_db[entity][ct] for ct in component_types)
         except KeyError:
             pass
 
@@ -363,7 +375,9 @@ class World:
                 component_type, list(self._get_component(component_type))
             )
 
-    def get_components(self, *component_types: _Type[_C]) -> _List[_Tuple[int, _List[_C]]]:
+    def get_components(
+        self, *component_types: *_Cs
+    ) -> _List[_Tuple[int, _Tuple[*_Cs]]]:
         """Get an iterator for Entity and multiple Component sets."""
         try:
             return self._get_components_cache[component_types]
@@ -384,7 +398,9 @@ class World:
             return self._entities[entity][component_type]
         return None
 
-    def try_components(self, entity: int, *component_types: _Type[_C]) -> _Optional[_List[_List[_C]]]:
+    def try_components(
+        self, entity: int, *component_types: *_Cs
+    ) -> _Optional[_List[_Tuple[*_Cs]]]:
         """Try to get a multiple component types for an Entity.
 
         This method will return the requested Components if they exist,
@@ -404,7 +420,6 @@ class World:
         be duplicated here as well.
         """
         for entity in self._dead_entities:
-
             for component_type in self._entities[entity]:
                 self._components[component_type].discard(entity)
 
